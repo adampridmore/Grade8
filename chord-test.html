@@ -140,13 +140,8 @@
             return btn;
         });
 
-        function playChord(notes, btn) {
-            if (!guitar || !ac) return;
-            log(`click: ac.state=${ac.state} sampleRate=${ac.sampleRate} currentTime=${ac.currentTime.toFixed(3)}`);
-            if (ac.state === 'suspended') {
-                ac.resume().then(() => log(`resume() resolved: ac.state=${ac.state}`))
-                           .catch(err => log(`resume() rejected: ${err}`));
-            }
+        function strum(notes) {
+            log(`strum: ac.state=${ac.state} currentTime=${ac.currentTime.toFixed(3)}`);
             try {
                 notes.forEach((midi, i) => {
                     const node = guitar.play(midi, ac.currentTime + i * STRUM_DELAY, { gain: 1.2 });
@@ -154,6 +149,17 @@
                 });
             } catch (err) {
                 log(`play() threw: ${err}`);
+            }
+        }
+
+        function playChord(notes, btn) {
+            if (!guitar || !ac) return;
+            log(`click: ac.state=${ac.state}`);
+            if (ac.state === 'suspended') {
+                ac.resume().then(() => strum(notes))
+                           .catch(err => log(`resume() rejected: ${err}`));
+            } else {
+                strum(notes);
             }
             btn.classList.add('playing');
             setTimeout(() => btn.classList.remove('playing'), 300);
