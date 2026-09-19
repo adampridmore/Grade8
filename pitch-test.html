@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pitch Test</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        body { justify-content: center; gap: 1.5rem; }
+
+        .key-display {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        #playStatus {
+            color: #888;
+            font-size: 0.85rem;
+            min-height: 1.2em;
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            background: #16213e;
+            border: 2px solid #0f3460;
+            border-radius: 8px;
+            color: #eee;
+            cursor: pointer;
+            font-size: 0.9rem;
+            padding: 0.6rem 1.2rem;
+            transition: all 0.15s ease;
+        }
+
+        button:not([disabled]):hover {
+            border-color: #e94560;
+            background: #1f2d50;
+        }
+
+        .hint {
+            color: #666;
+            font-size: 0.75rem;
+            text-align: center;
+            max-width: 420px;
+        }
+
+        .answer-box {
+            display: flex;
+            flex-direction: column;
+            gap: 0.7rem;
+            width: 100%;
+            max-width: 520px;
+        }
+
+        .bar-row {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        .bar-label {
+            width: 3.2rem;
+            flex-shrink: 0;
+            font-size: 0.75rem;
+            color: #888;
+            text-align: right;
+        }
+
+        .bar-notes {
+            display: flex;
+            gap: 0.9rem;
+            flex-wrap: wrap;
+            background: #16213e;
+            border: 2px solid #0f3460;
+            border-radius: 8px;
+            padding: 0.6rem 0.9rem;
+            flex: 1;
+        }
+
+        .note-cell {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 1.6rem;
+        }
+
+        .note-fret {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #eee;
+        }
+
+        .note-meta {
+            font-size: 0.65rem;
+            color: #888;
+            margin-top: 0.15rem;
+            white-space: nowrap;
+        }
+
+        .same-badge {
+            font-size: 0.7rem;
+            color: #4caf50;
+            align-self: center;
+        }
+
+        .string-line {
+            font-size: 0.8rem;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <a class="home-link" href="index.html">&larr; Home</a>
+    <h1>Pitch Test</h1>
+    <p class="subtitle">Listen to the 4-bar phrase, then reveal the answer to check yourself</p>
+    <p id="status">Loading samples&hellip;</p>
+
+    <p class="key-display" id="keyDisplay"></p>
+    <p id="playStatus"></p>
+
+    <div class="controls">
+        <button id="onceMoreBtn" disabled>Play Once More</button>
+        <button id="revealBtn" disabled>Reveal</button>
+        <button id="newTestBtn" disabled>New Test</button>
+    </div>
+
+    <p class="hint">Bars 1 and 3 are always identical. Try to sing or play the phrase back before revealing.</p>
+
+    <div class="answer-box" id="answerBox" hidden></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/soundfont-player@0.12.0/dist/soundfont-player.min.js"></script>
+    <script>
+        // ── Music data ────────────────────────────────────────────
+
+        // Standard tuning, low to high (matches fretboard.html)
+        const GUITAR_STRINGS = [
+            { label: 'E', openMidi: 40 },
+            { label: 'A', openMidi: 45 },
+            { label: 'D', openMidi: 50 },
+            { label: 'G', openMidi: 55 },
+            { label: 'B', openMidi: 59 },
+            { label: 'e', openMidi: 64 },
+        ];
+
+        // Major scale semitone offsets, degree 1..8 (8 = octave)
+        const MAJOR_SCALE_INTERVALS = [0, 2, 4, 5, 7, 9, 11, 12];
+
+        // 12 major keys, one per pitch class, with conventional diatonic spelling
+        const KEYS = [
+            { name: 'C major',  tonicPc: 0,  names: ['C', 'D', 'E', 'F', 'G', 'A', 'B'] },
+            { name: 'G major',  tonicPc: 7,  names: ['G', 'A', 'B', 'C', 'D', 'E', 'F#'] },
+            { name: 'D major',  tonicPc: 2,  names: ['D', 'E', 'F#', 'G', 'A', 'B', 'C#'] },
+            { name: 'A major',  tonicPc: 9,  names: ['A', 'B', 'C#', 'D', 'E', 'F#', 'G#'] },
+            { name: 'E major',  tonicPc: 4,  names: ['E', 'F#', 'G#', 'A', 'B', 'C#', 'D#'] },
+            { name: 'B major',  tonicPc: 11, names: ['B', 'C#', 'D#', 'E', 'F#', 'G#', 'A#'] },
+            { name: 'F# major', tonicPc: 6,  names: ['F#', 'G#', 'A#', 'B', 'C#', 'D#', 'E#'] },
+            { name: 'Db major', tonicPc: 1,  names: ['Db', 'Eb', 'F', 'Gb', 'Ab', 'Bb', 'C'] },
+            { name: 'Ab major', tonicPc: 8,  names: ['Ab', 'Bb', 'C', 'Db', 'Eb', 'F', 'G'] },
+            { name: 'Eb major', tonicPc: 3,  names: ['Eb', 'F', 'G', 'Ab', 'Bb', 'C', 'D'] },
+            { name: 'Bb major', tonicPc: 10, names: ['Bb', 'C', 'D', 'Eb', 'F', 'G', 'A'] },
+            { name: 'F major',  tonicPc: 5,  names: ['F', 'G', 'A', 'Bb', 'C', 'D', 'E'] },
+        ];
+
+        const TIME_SIGS = ['3/4', '4/4', '6/8'];
+
+        // Rhythm cells, expressed in eighth-note units (1 = quaver, 2 = crotchet, 3 = dotted crotchet)
+        const CELLS_2 = [[2], [1, 1]];
+        const CELLS_3 = [[3], [2, 1], [1, 2], [1, 1, 1]];
+
+        const DURATION_LABEL = { 1: '♪', 2: '♩', 3: '♩.' }; // quaver, crotchet, dotted crotchet
+        const EIGHTH = 0.3; // seconds per eighth-note unit
+        const GAP = EIGHTH * 2;
+
+        // ── State ─────────────────────────────────────────────────
+
+        let guitar = null;
+        let ac = null;
+        let busy = false;
+        let current = null; // { key, timeSig, stringIdx, fret, bar1, bar2, bar4 } (bar3 === bar1)
+
+        const statusEl     = document.getElementById('status');
+        const keyDisplayEl = document.getElementById('keyDisplay');
+        const playStatusEl = document.getElementById('playStatus');
+        const onceMoreBtn  = document.getElementById('onceMoreBtn');
+        const revealBtn    = document.getElementById('revealBtn');
+        const newTestBtn   = document.getElementById('newTestBtn');
+        const answerBox    = document.getElementById('answerBox');
+
+        // ── Generation ────────────────────────────────────────────
+
+        function chooseStringAndFret(tonicPc) {
+            let best = null;
+            GUITAR_STRINGS.forEach((string, idx) => {
+                const fret = (tonicPc - (string.openMidi % 12) + 12) % 12;
+                if (!best || fret < best.fret) best = { idx, fret, openMidi: string.openMidi };
+            });
+            return best;
+        }
+
+        function generateDegreeSequence(n) {
+            const starts = [0, 2, 4]; // 1st, 3rd, 5th degree (0-based index)
+            let cur = starts[Math.floor(Math.random() * starts.length)];
+            const seq = [cur];
+            for (let i = 1; i < n; i++) {
+                let delta;
+                if (Math.random() < 0.75) {
+                    delta = Math.random() < 0.5 ? -1 : 1;
+                } else {
+                    const leap = Math.random() < 0.5 ? 2 : 3;
+                    delta = Math.random() < 0.5 ? -leap : leap;
+                }
+                let next = cur + delta;
+                if (next < 0 || next > 7) next = cur - delta;
+                if (next < 0 || next > 7) next = cur;
+                seq.push(next);
+                cur = next;
+            }
+            return seq;
+        }
+
+        function generateBarRhythm(timeSig) {
+            const groups = timeSig === '6/8' ? [3, 3] : (timeSig === '4/4' ? [2, 2, 2, 2] : [2, 2, 2]);
+            const units = [];
+            groups.forEach(size => {
+                const pool = size === 3 ? CELLS_3 : CELLS_2;
+                units.push(...pool[Math.floor(Math.random() * pool.length)]);
+            });
+            return units;
+        }
+
+        function generateTest() {
+            const key = KEYS[Math.floor(Math.random() * KEYS.length)];
+            const timeSig = TIME_SIGS[Math.floor(Math.random() * TIME_SIGS.length)];
+            const { idx: stringIdx, fret, openMidi } = chooseStringAndFret(key.tonicPc);
+
+            const bar1Durations = generateBarRhythm(timeSig);
+            const bar2Durations = generateBarRhythm(timeSig);
+            const bar4Durations = generateBarRhythm(timeSig);
+
+            const degrees = generateDegreeSequence(bar1Durations.length + bar2Durations.length + bar4Durations.length);
+            const bar1Degrees = degrees.slice(0, bar1Durations.length);
+            const bar2Degrees = degrees.slice(bar1Durations.length, bar1Durations.length + bar2Durations.length);
+            const bar4Degrees = degrees.slice(bar1Durations.length + bar2Durations.length);
+
+            const toBar = (durations, degs) => durations.map((dur, i) => ({ dur, degree: degs[i] }));
+
+            return {
+                key,
+                timeSig,
+                stringIdx,
+                fret,
+                tonicMidi: openMidi + fret,
+                bar1: toBar(bar1Durations, bar1Degrees),
+                bar2: toBar(bar2Durations, bar2Degrees),
+                bar4: toBar(bar4Durations, bar4Degrees),
+            };
+        }
+
+        // ── Playback ──────────────────────────────────────────────
+
+        function noteMidi(test, degree) {
+            return test.tonicMidi + MAJOR_SCALE_INTERVALS[degree];
+        }
+
+        function schedulePhrase(test, startTime) {
+            let t = startTime;
+            [test.bar1, test.bar2, test.bar1, test.bar4].forEach(bar => {
+                bar.forEach(({ dur, degree }) => {
+                    guitar.play(noteMidi(test, degree), ac.currentTime + t, { gain: 1.3 });
+                    t += dur * EIGHTH;
+                });
+            });
+            return t; // end time (relative offset)
+        }
+
+        function playIntroAndPhrase(test, repeats) {
+            if (!guitar || !ac || busy) return;
+            if (ac.state === 'suspended') ac.resume();
+            busy = true;
+            setControlsEnabled(false);
+            playStatusEl.textContent = 'Playing…';
+
+            let t = 0;
+            guitar.play(test.tonicMidi, ac.currentTime + t, { gain: 1.3 });
+            t += 2 * EIGHTH + GAP;
+
+            for (let i = 0; i < repeats; i++) {
+                t = schedulePhrase(test, t);
+                t += GAP;
+            }
+
+            setTimeout(() => {
+                busy = false;
+                setControlsEnabled(true);
+                playStatusEl.textContent = 'Ready';
+            }, t * 1000);
+        }
+
+        function setControlsEnabled(enabled) {
+            const revealed = answerBox.hidden === false;
+            newTestBtn.disabled = !enabled;
+            onceMoreBtn.disabled = !enabled || revealed;
+            revealBtn.disabled = !enabled || revealed;
+        }
+
+        // ── UI ────────────────────────────────────────────────────
+
+        function startNewTest() {
+            current = generateTest();
+            keyDisplayEl.textContent = `Key: ${current.key.name} — Time: ${current.timeSig}`;
+            answerBox.hidden = true;
+            answerBox.innerHTML = '';
+            playIntroAndPhrase(current, 2);
+        }
+
+        function playOnceMore() {
+            if (!current) return;
+            playIntroAndPhrase(current, 1);
+        }
+
+        function durationLabel(units) {
+            return DURATION_LABEL[units] || '';
+        }
+
+        function renderBar(bar, test) {
+            const row = document.createElement('div');
+            row.className = 'bar-notes';
+            bar.forEach(({ dur, degree }) => {
+                const cell = document.createElement('div');
+                cell.className = 'note-cell';
+                const fret = document.createElement('div');
+                fret.className = 'note-fret';
+                fret.textContent = test.fret + MAJOR_SCALE_INTERVALS[degree];
+                const meta = document.createElement('div');
+                meta.className = 'note-meta';
+                meta.textContent = `${test.key.names[degree % 7]}${durationLabel(dur)}`;
+                cell.appendChild(fret);
+                cell.appendChild(meta);
+                row.appendChild(cell);
+            });
+            return row;
+        }
+
+        function reveal() {
+            if (!current) return;
+            answerBox.innerHTML = '';
+
+            const stringLine = document.createElement('p');
+            stringLine.className = 'string-line';
+            stringLine.textContent = `Played on the ${GUITAR_STRINGS[current.stringIdx].label} string, starting at fret ${current.fret}`;
+            answerBox.appendChild(stringLine);
+
+            [
+                { label: 'Bar 1', bar: current.bar1 },
+                { label: 'Bar 2', bar: current.bar2 },
+                { label: 'Bar 3', bar: current.bar1, same: true },
+                { label: 'Bar 4', bar: current.bar4 },
+            ].forEach(({ label, bar, same }) => {
+                const row = document.createElement('div');
+                row.className = 'bar-row';
+                const labelEl = document.createElement('div');
+                labelEl.className = 'bar-label';
+                labelEl.textContent = label;
+                row.appendChild(labelEl);
+                row.appendChild(renderBar(bar, current));
+                if (same) {
+                    const badge = document.createElement('span');
+                    badge.className = 'same-badge';
+                    badge.textContent = '= Bar 1';
+                    row.appendChild(badge);
+                }
+                answerBox.appendChild(row);
+            });
+
+            answerBox.hidden = false;
+            onceMoreBtn.disabled = true;
+            revealBtn.disabled = true;
+            playStatusEl.textContent = 'Revealed';
+        }
+
+        newTestBtn.addEventListener('click', startNewTest);
+        onceMoreBtn.addEventListener('click', playOnceMore);
+        revealBtn.addEventListener('click', reveal);
+
+        // ── Audio loading ─────────────────────────────────────────
+
+        function loadSamples() {
+            ac = new (window.AudioContext || window.webkitAudioContext)();
+            Soundfont.instrument(ac, 'acoustic_guitar_steel', {
+                soundfont: 'FluidR3_GM',
+                nameToUrl: (name, sf) =>
+                    `https://gleitz.github.io/midi-js-soundfonts/${sf}/${name}-mp3.js`
+            }).then(instrument => {
+                guitar = instrument;
+                statusEl.textContent = 'Samples ready';
+                statusEl.classList.add('ready');
+                newTestBtn.disabled = false;
+                startNewTest();
+            }).catch(() => {
+                statusEl.textContent = 'Click anywhere to load samples…';
+                document.addEventListener('click', loadSamples, { once: true });
+            });
+        }
+
+        window.addEventListener('load', loadSamples);
+    </script>
+</body>
+</html>
