@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guitar Fretboard</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+            gap: 1.5rem;
+        }
+
+        h1 { font-size: 2rem; color: #e94560; letter-spacing: 1px; }
+
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        #status { font-size: 0.85rem; color: #f0a500; }
+        #status.ready { color: #4caf50; }
+
+        .toggle-btn {
+            background: #16213e;
+            border: 2px solid #0f3460;
+            border-radius: 8px;
+            color: #eee;
+            cursor: pointer;
+            padding: 0.45rem 1rem;
+            font-size: 0.85rem;
+            transition: all 0.15s;
+        }
+        .toggle-btn.on { background: #e94560; border-color: #e94560; }
+
+        /* ── Fretboard ── */
+        .fretboard-scroll {
+            overflow-x: auto;
+            width: 100%;
+            max-width: 1040px;
+            padding-bottom: 4px;
+        }
+
+        .fretboard {
+            display: inline-grid;
+            /* col 0: string label | col 1: open | cols 2-13: frets 1-12 */
+            grid-template-columns: 32px 68px repeat(12, 58px);
+            background: linear-gradient(180deg, #4a2808 0%, #3a1e05 100%);
+            border-radius: 10px;
+            padding: 10px 14px 14px;
+            min-width: 858px;
+            row-gap: 0;
+        }
+
+        /* Fret number header */
+        .hdr {
+            text-align: center;
+            font-size: 0.68rem;
+            color: #7a6a50;
+            padding-bottom: 6px;
+            user-select: none;
+        }
+
+        /* String row cells */
+        .s-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.72rem;
+            font-weight: bold;
+            color: #a09070;
+            user-select: none;
+        }
+
+        .fret-cell {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 52px;
+            /* fret wire on the right */
+            border-right: 1.5px solid #8a6a48;
+        }
+
+        /* Nut: thick right border on the open column */
+        .fret-cell.open-col {
+            border-right: 5px solid #e8d8b8;
+        }
+
+        /* Last fret needs no wire on right */
+        .fret-cell:last-of-type { border-right: none; }
+
+        /* String line drawn through the cell */
+        .fret-cell::before {
+            content: '';
+            position: absolute;
+            left: 0; right: 0;
+            height: var(--sw);
+            background: var(--sc);
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        /* Note button */
+        .note-btn {
+            position: relative;
+            z-index: 1;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(42, 22, 5, 0.75);
+            color: transparent;
+            font-size: 0.6rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.08s, transform 0.08s, color 0.08s;
+            user-select: none;
+            line-height: 1;
+        }
+
+        .note-btn:hover {
+            background: rgba(233, 69, 96, 0.85);
+            color: #fff;
+            border-color: #e94560;
+            transform: scale(1.2);
+        }
+
+        .note-btn.lit {
+            background: #e94560 !important;
+            color: #fff !important;
+            border-color: #ff8099 !important;
+            transform: scale(1.15);
+        }
+
+        /* Show-notes mode: labels always visible */
+        .show-notes .note-btn { color: rgba(255,235,200,0.8); }
+        .show-notes .note-btn:hover { color: #fff; }
+        .show-notes .note-btn.natural {
+            background: rgba(65, 38, 12, 0.85);
+        }
+
+        /* Dot markers row */
+        .dot-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 18px;
+            gap: 3px;
+        }
+        .dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: #c8a870;
+        }
+    </style>
+</head>
+<body>
+    <h1>Guitar Fretboard</h1>
+
+    <div class="toolbar">
+        <span id="status">Loading samples…</span>
+        <button class="toggle-btn" id="toggleNotes">Show note names</button>
+    </div>
+
+    <div class="fretboard-scroll">
+        <div class="fretboard" id="fretboard"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/soundfont-player@0.12.0/dist/soundfont-player.min.js"></script>
+    <script>
+        // Standard tuning, low to high
+        const STRINGS = [
+            { label: 'e',  openMidi: 64, sw: '0.65px', sc: '#e8e0c0' },
+            { label: 'B',  openMidi: 59, sw: '1.0px',  sc: '#ddd0a8' },
+            { label: 'G',  openMidi: 55, sw: '1.5px',  sc: '#d4c090' },
+            { label: 'D',  openMidi: 50, sw: '2.1px',  sc: '#c8b080' },
+            { label: 'A',  openMidi: 45, sw: '2.8px',  sc: '#bca070' },
+            { label: 'E',  openMidi: 40, sw: '3.6px',  sc: '#b09060' },
+        ];
+
+        const FRETS      = 12;
+        const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+        const NATURALS   = new Set(['C','D','E','F','G','A','B']);
+        const DOT_FRETS  = new Set([3, 5, 7, 9, 12]);
+
+        let guitar = null, ac = null;
+
+        const statusEl  = document.getElementById('status');
+        const board     = document.getElementById('fretboard');
+        const toggleBtn = document.getElementById('toggleNotes');
+
+        // ── Build DOM ──────────────────────────────────────────────
+
+        function build() {
+            // Header row: blank + "Open" + fret numbers
+            board.appendChild(div('hdr'));
+            board.appendChild(div('hdr', 'Open'));
+            for (let f = 1; f <= FRETS; f++) board.appendChild(div('hdr', f));
+
+            // String rows
+            STRINGS.forEach(({ label, openMidi, sw, sc }) => {
+                board.appendChild(div('s-label', label));
+
+                for (let f = 0; f <= FRETS; f++) {
+                    const midi     = openMidi + f;
+                    const name     = NOTE_NAMES[midi % 12];
+                    const isNat    = NATURALS.has(name);
+
+                    const cell = document.createElement('div');
+                    cell.className = 'fret-cell' + (f === 0 ? ' open-col' : '');
+                    cell.style.setProperty('--sw', sw);
+                    cell.style.setProperty('--sc', sc);
+
+                    const btn = document.createElement('button');
+                    btn.className = 'note-btn' + (isNat ? ' natural' : '');
+                    btn.textContent = name;
+                    btn.title = `${name} (MIDI ${midi})`;
+                    btn.addEventListener('click', () => pluck(midi, btn));
+
+                    cell.appendChild(btn);
+                    board.appendChild(cell);
+                }
+            });
+
+            // Dot marker row
+            board.appendChild(div('')); // label spacer
+            for (let f = 0; f <= FRETS; f++) {
+                const cell = document.createElement('div');
+                cell.className = 'dot-row';
+                if (DOT_FRETS.has(f)) {
+                    cell.appendChild(dot());
+                    if (f === 12) cell.appendChild(dot()); // double dot
+                }
+                board.appendChild(cell);
+            }
+        }
+
+        function div(cls, text = '') {
+            const el = document.createElement('div');
+            el.className = cls;
+            el.textContent = text;
+            return el;
+        }
+
+        function dot() {
+            const d = document.createElement('div');
+            d.className = 'dot';
+            return d;
+        }
+
+        // ── Audio ──────────────────────────────────────────────────
+
+        function pluck(midi, btn) {
+            if (!guitar || !ac) return;
+            if (ac.state === 'suspended') ac.resume();
+            guitar.play(midi, ac.currentTime, { gain: 1.5 });
+            btn.classList.add('lit');
+            setTimeout(() => btn.classList.remove('lit'), 500);
+        }
+
+        function loadSamples() {
+            ac = new (window.AudioContext || window.webkitAudioContext)();
+            Soundfont.instrument(ac, 'acoustic_guitar_steel', {
+                soundfont: 'FluidR3_GM',
+                nameToUrl: (name, sf) =>
+                    `https://gleitz.github.io/midi-js-soundfonts/${sf}/${name}-mp3.js`
+            }).then(inst => {
+                guitar = inst;
+                statusEl.textContent = 'Samples ready';
+                statusEl.classList.add('ready');
+            }).catch(() => {
+                statusEl.textContent = 'Click anywhere to load samples…';
+                document.addEventListener('click', loadSamples, { once: true });
+            });
+        }
+
+        // ── Toggle note names ──────────────────────────────────────
+
+        toggleBtn.addEventListener('click', () => {
+            const on = board.classList.toggle('show-notes');
+            toggleBtn.textContent = on ? 'Hide note names' : 'Show note names';
+            toggleBtn.classList.toggle('on', on);
+        });
+
+        build();
+        window.addEventListener('load', loadSamples);
+    </script>
+</body>
+</html>

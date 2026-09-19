@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guitar Chord Player — Real Samples</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2rem;
+            padding: 2rem;
+        }
+
+        h1 { font-size: 2rem; color: #e94560; letter-spacing: 1px; }
+        .subtitle { color: #888; font-size: 0.9rem; }
+
+        #status {
+            font-size: 0.85rem;
+            color: #f0a500;
+            min-height: 1.2em;
+        }
+
+        #status.ready { color: #4caf50; }
+
+        .chord-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            width: 100%;
+            max-width: 480px;
+        }
+
+        .chord-btn {
+            background: #16213e;
+            border: 2px solid #0f3460;
+            border-radius: 12px;
+            color: #eee;
+            cursor: pointer;
+            font-size: 1.4rem;
+            font-weight: bold;
+            padding: 1.5rem 1rem;
+            text-align: center;
+            transition: all 0.15s ease;
+            user-select: none;
+        }
+
+        .chord-btn[disabled] {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .chord-btn .type {
+            display: block;
+            font-size: 0.7rem;
+            font-weight: normal;
+            color: #888;
+            margin-top: 0.3rem;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .chord-btn:not([disabled]):hover {
+            border-color: #e94560;
+            background: #1f2d50;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(233, 69, 96, 0.2);
+        }
+
+        .chord-btn:not([disabled]):active,
+        .chord-btn.playing {
+            background: #e94560;
+            border-color: #e94560;
+            transform: translateY(0);
+            box-shadow: 0 2px 8px rgba(233, 69, 96, 0.4);
+        }
+
+        .chord-btn.playing .type { color: #ffccd5; }
+    </style>
+</head>
+<body>
+    <h1>Guitar Chord Player</h1>
+    <p class="subtitle">Real Samples — acoustic guitar steel</p>
+    <p id="status">Loading samples…</p>
+
+    <div class="chord-grid" id="chordGrid"></div>
+
+    <!-- soundfont-player: loads real recorded guitar notes from a CDN soundfont -->
+    <script src="https://cdn.jsdelivr.net/npm/soundfont-player@0.12.0/dist/soundfont-player.min.js"></script>
+    <script>
+        // MIDI note numbers (unambiguous across sharps/flats)
+        // Standard guitar tuning: E2=40  A2=45  D3=50  G3=55  B3=59  E4=64
+        const CHORDS = [
+            { name: 'E', type: 'Major', notes: [40, 47, 52, 56, 59, 64] }, // E2 B2 E3 G#3 B3 E4
+            { name: 'A', type: 'Major', notes: [45, 52, 57, 61, 64]      }, // A2 E3 A3 C#4 E4
+            { name: 'D', type: 'Major', notes: [50, 57, 62, 66]          }, // D3 A3 D4 F#4
+            { name: 'G', type: 'Major', notes: [43, 47, 50, 55, 59, 67]  }, // G2 B2 D3 G3 B3 G4
+            { name: 'C', type: 'Major', notes: [48, 52, 55, 60, 64]      }, // C3 E3 G3 C4 E4
+            { name: 'B', type: 'Major', notes: [47, 54, 59, 63, 66]      }, // B2 F#3 B3 D#4 F#4
+        ];
+
+        const STRUM_DELAY = 0.022; // seconds between strings
+
+        let guitar = null;
+        let ac = null;
+
+        const statusEl = document.getElementById('status');
+        const grid     = document.getElementById('chordGrid');
+
+        // Build buttons (disabled until samples load)
+        const buttons = CHORDS.map(({ name, type, notes }) => {
+            const btn = document.createElement('button');
+            btn.className = 'chord-btn';
+            btn.disabled = true;
+            btn.innerHTML = `${name}<span class="type">${type}</span>`;
+            btn.addEventListener('click', () => playChord(notes, btn));
+            grid.appendChild(btn);
+            return btn;
+        });
+
+        function playChord(notes, btn) {
+            if (!guitar || !ac) return;
+            if (ac.state === 'suspended') ac.resume();
+
+            notes.forEach((midi, i) => {
+                guitar.play(midi, ac.currentTime + i * STRUM_DELAY, { gain: 1.2 });
+            });
+
+            btn.classList.add('playing');
+            setTimeout(() => btn.classList.remove('playing'), 300);
+        }
+
+        // Create AudioContext and load samples on first user interaction (browser policy)
+        async function init() {
+            if (guitar) return;
+            ac = new (window.AudioContext || window.webkitAudioContext)();
+            try {
+                guitar = await Soundfont.instrument(ac, 'acoustic_guitar_steel', {
+                    soundfont: 'FluidR3_GM',
+                    nameToUrl: (name, sf) =>
+                        `https://gleitz.github.io/midi-js-soundfonts/${sf}/${name}-mp3.js`
+                });
+                statusEl.textContent = 'Samples ready';
+                statusEl.classList.add('ready');
+                buttons.forEach(btn => btn.disabled = false);
+            } catch (e) {
+                statusEl.textContent = 'Failed to load samples — check your connection';
+                statusEl.style.color = '#e94560';
+            }
+        }
+
+        // Pre-load on page load, but AudioContext needs user gesture first
+        document.addEventListener('click', init, { once: true });
+        // Also try immediately (works if autoplay policy allows)
+        window.addEventListener('load', () => {
+            // Attempt silent load without AudioContext — the library handles it
+            ac = new (window.AudioContext || window.webkitAudioContext)();
+            Soundfont.instrument(ac, 'acoustic_guitar_steel', {
+                soundfont: 'FluidR3_GM',
+                nameToUrl: (name, sf) =>
+                    `https://gleitz.github.io/midi-js-soundfonts/${sf}/${name}-mp3.js`
+            }).then(instrument => {
+                guitar = instrument;
+                statusEl.textContent = 'Samples ready';
+                statusEl.classList.add('ready');
+                buttons.forEach(btn => btn.disabled = false);
+            }).catch(() => {
+                statusEl.textContent = 'Click any button to load samples…';
+            });
+        });
+    </script>
+</body>
+</html>
