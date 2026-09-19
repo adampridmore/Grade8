@@ -79,7 +79,7 @@
 
     <div class="controls">
         <button id="playBtn" disabled>Play</button>
-        <button id="revealBtn" disabled>Reveal</button>
+        <button id="revealBtn">Reveal</button>
         <button id="newTestBtn" disabled>New Test</button>
     </div>
 
@@ -282,7 +282,6 @@
         function refreshControls() {
             newTestBtn.disabled = busy;
             playBtn.disabled = busy || !current;
-            revealBtn.disabled = busy || !current || !current.played;
         }
 
         // ── UI ────────────────────────────────────────────────────
@@ -373,7 +372,8 @@
                 guitar = instrument;
                 statusEl.textContent = 'Samples ready';
                 statusEl.classList.add('ready');
-                startNewTest();
+                playStatusEl.textContent = 'Press New Test to begin';
+                refreshControls();
             }).catch(() => {
                 statusEl.textContent = 'Click anywhere to load samples…';
                 document.addEventListener('click', loadSamples, { once: true });
