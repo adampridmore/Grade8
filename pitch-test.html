@@ -151,46 +151,53 @@
 
         // ── Generation ────────────────────────────────────────────
 
-        // Picks the string/fret with the smallest FRETTED (non-open) position for
-        // this pitch class, so the phrase is always played up the neck rather than
-        // in open position.
-        function chooseStringAndFret(tonicPc) {
-            let best = null;
-            GUITAR_STRINGS.forEach((string, idx) => {
-                const fret = (tonicPc - (string.openMidi % 12) + 12) % 12;
-                if (fret === 0) return; // skip open strings
-                if (!best || fret < best.fret) best = { idx, fret, openMidi: string.openMidi };
-            });
-            return best;
-        }
-
         // Maps each scale degree (0..7, tonic..octave) to a fixed (string, fret),
-        // walking up the neck one string at a time like a natural scale fingering:
-        // stay on the current string while the fret is within reach, otherwise
-        // shift up to the next string -- unless that shift would land on an open
-        // string, in which case the current string is kept a little longer instead.
-        const POSITION_SPAN = 4; // max frets above the string's landing fret before shifting
+        // all within a single 5-fret window so the fretting hand never has to
+        // shift position to play the phrase. Searches for the lowest such window
+        // (starting above the open strings) that can reach every degree.
+        const WINDOW_WIDTH = 5;
+        const MAX_FRET_SEARCH = 10;
 
-        function buildDegreeMap(tonicPc) {
-            const start = chooseStringAndFret(tonicPc);
-            const tonicMidi = start.openMidi + start.fret;
-            let curStringIdx = start.idx;
-            let curBaseFret = start.fret;
+        function tryBuildWindowMap(tonicMidi, windowStart) {
             const map = {};
+            let prevStringIdx = 0;
             for (let d = 0; d <= 7; d++) {
                 const targetMidi = tonicMidi + MAJOR_SCALE_INTERVALS[d];
-                let fret = targetMidi - GUITAR_STRINGS[curStringIdx].openMidi;
-                if (fret > curBaseFret + POSITION_SPAN && curStringIdx < GUITAR_STRINGS.length - 1) {
-                    const nextFret = targetMidi - GUITAR_STRINGS[curStringIdx + 1].openMidi;
-                    if (nextFret > 0) {
-                        curStringIdx += 1;
-                        curBaseFret = nextFret;
-                        fret = nextFret;
+                let found = null;
+                // prefer a string at or above the previous note's, for a smooth
+                // low-to-high fingering shape; fall back to any string that fits
+                for (const s of [...range(prevStringIdx, GUITAR_STRINGS.length), ...range(0, prevStringIdx)]) {
+                    const fret = targetMidi - GUITAR_STRINGS[s].openMidi;
+                    if (fret >= windowStart && fret <= windowStart + WINDOW_WIDTH - 1) {
+                        found = { stringIdx: s, fret };
+                        break;
                     }
                 }
-                map[d] = { stringIdx: curStringIdx, fret };
+                if (!found) return null;
+                map[d] = found;
+                prevStringIdx = found.stringIdx;
             }
-            return { map, tonicMidi };
+            return map;
+        }
+
+        function range(from, to) {
+            const out = [];
+            for (let i = from; i < to; i++) out.push(i);
+            return out;
+        }
+
+        function buildDegreeMap(tonicPc) {
+            for (let fret = 1; fret <= MAX_FRET_SEARCH; fret++) {
+                for (let stringIdx = 0; stringIdx < GUITAR_STRINGS.length; stringIdx++) {
+                    if ((GUITAR_STRINGS[stringIdx].openMidi + fret) % 12 !== tonicPc) continue;
+                    const tonicMidi = GUITAR_STRINGS[stringIdx].openMidi + fret;
+                    for (let windowStart = Math.max(1, fret - (WINDOW_WIDTH - 1)); windowStart <= fret; windowStart++) {
+                        const map = tryBuildWindowMap(tonicMidi, windowStart);
+                        if (map) return { map, tonicMidi };
+                    }
+                }
+            }
+            throw new Error('No 5-fret position found for pitch class ' + tonicPc);
         }
 
         function generateDegreeSequence(n) {
