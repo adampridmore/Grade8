@@ -13,6 +13,13 @@
             font-weight: bold;
         }
 
+        .score {
+            color: #888;
+            font-size: 0.9rem;
+        }
+        .score .correct { color: #4caf50; font-weight: bold; }
+        .score .wrong   { color: #e94560; font-weight: bold; }
+
         .controls {
             display: flex;
             gap: 1rem;
@@ -89,6 +96,7 @@
     <p id="status">Loading samples&hellip;</p>
 
     <p class="key-display" id="keyDisplay"></p>
+    <p class="score" id="score">Score: <span class="correct">0</span> correct, <span class="wrong">0</span> wrong</p>
 
     <div class="controls">
         <button id="replayBtn" disabled>Replay</button>
@@ -149,9 +157,13 @@
         let guitar = null;
         let ac = null;
         let current = null;
+        let currentScored = false; // has the active test already been tallied into the score?
+        let correctCount = 0;
+        let wrongCount = 0;
 
         const statusEl      = document.getElementById('status');
         const keyDisplayEl  = document.getElementById('keyDisplay');
+        const scoreEl       = document.getElementById('score');
         const replayBtn     = document.getElementById('replayBtn');
         const newTestBtn    = document.getElementById('newTestBtn');
         const answerInput   = document.getElementById('answerInput');
@@ -178,11 +190,16 @@
 
         function startNewTest() {
             current = pickSequence();
+            currentScored = false;
             keyDisplayEl.textContent = `Key: ${current.key}`;
             answerInput.value = '';
             resultEl.innerHTML = '';
             answerLineEl.textContent = '';
             playSequence(current.chords);
+        }
+
+        function updateScoreDisplay() {
+            scoreEl.innerHTML = `Score: <span class="correct">${correctCount}</span> correct, <span class="wrong">${wrongCount}</span> wrong`;
         }
 
         function checkAnswer() {
@@ -197,7 +214,13 @@
                 span.className = 'chord-result ' + (isCorrect ? 'correct' : 'wrong');
                 span.textContent = givenChord || '—';
                 resultEl.appendChild(span);
+
+                if (!currentScored) {
+                    if (isCorrect) correctCount++; else wrongCount++;
+                }
             });
+            currentScored = true;
+            updateScoreDisplay();
 
             answerLineEl.textContent = `Correct sequence: ${current.chords.join(' ')}`;
         }
