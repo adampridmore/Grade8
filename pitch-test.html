@@ -50,67 +50,21 @@
         }
 
         .answer-box {
-            display: flex;
-            flex-direction: column;
-            gap: 0.7rem;
             width: 100%;
-            max-width: 520px;
+            max-width: 640px;
+            overflow-x: auto;
         }
 
-        .bar-row {
-            display: flex;
-            align-items: center;
-            gap: 0.6rem;
-        }
-
-        .bar-label {
-            width: 3.2rem;
-            flex-shrink: 0;
-            font-size: 0.75rem;
-            color: #888;
-            text-align: right;
-        }
-
-        .bar-notes {
-            display: flex;
-            gap: 0.9rem;
-            flex-wrap: wrap;
+        .tab {
+            font-family: 'Courier New', monospace;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            white-space: pre;
             background: #16213e;
             border: 2px solid #0f3460;
             border-radius: 8px;
-            padding: 0.6rem 0.9rem;
-            flex: 1;
-        }
-
-        .note-cell {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-width: 1.6rem;
-        }
-
-        .note-fret {
-            font-size: 1.1rem;
-            font-weight: bold;
+            padding: 0.9rem 1rem;
             color: #eee;
-        }
-
-        .note-meta {
-            font-size: 0.65rem;
-            color: #888;
-            margin-top: 0.15rem;
-            white-space: nowrap;
-        }
-
-        .same-badge {
-            font-size: 0.7rem;
-            color: #4caf50;
-            align-self: center;
-        }
-
-        .string-line {
-            font-size: 0.8rem;
-            color: #888;
         }
     </style>
 </head>
@@ -172,7 +126,6 @@
         const CELLS_2 = [[2], [1, 1]];
         const CELLS_3 = [[3], [2, 1], [1, 2], [1, 1, 1]];
 
-        const DURATION_LABEL = { 1: '♪', 2: '♩', 3: '♩.' }; // quaver, crotchet, dotted crotchet
         const EIGHTH = 0.3; // seconds per eighth-note unit
         const GAP = EIGHTH * 2;
 
@@ -181,7 +134,7 @@
         let guitar = null;
         let ac = null;
         let busy = false;
-        let current = null; // { key, timeSig, stringIdx, fret, bar1, bar2, bar4, played } (bar3 === bar1)
+        let current = null; // { key, timeSig, degreeMap, tonicMidi, bar1, bar2, bar4, played } (bar3 === bar1)
 
         const statusEl     = document.getElementById('status');
         const keyDisplayEl = document.getElementById('keyDisplay');
@@ -200,6 +153,31 @@
                 if (!best || fret < best.fret) best = { idx, fret, openMidi: string.openMidi };
             });
             return best;
+        }
+
+        // Maps each scale degree (0..7, tonic..octave) to a fixed (string, fret),
+        // walking up the neck one string at a time like a natural scale fingering:
+        // stay on the current string while the fret is within reach, otherwise
+        // shift up to the next string.
+        const POSITION_SPAN = 4; // max frets above the string's landing fret before shifting
+
+        function buildDegreeMap(tonicPc) {
+            const start = chooseStringAndFret(tonicPc);
+            const tonicMidi = start.openMidi + start.fret;
+            let curStringIdx = start.idx;
+            let curBaseFret = start.fret;
+            const map = {};
+            for (let d = 0; d <= 7; d++) {
+                const targetMidi = tonicMidi + MAJOR_SCALE_INTERVALS[d];
+                let fret = targetMidi - GUITAR_STRINGS[curStringIdx].openMidi;
+                if (fret > curBaseFret + POSITION_SPAN && curStringIdx < GUITAR_STRINGS.length - 1) {
+                    curStringIdx += 1;
+                    curBaseFret = targetMidi - GUITAR_STRINGS[curStringIdx].openMidi;
+                    fret = curBaseFret;
+                }
+                map[d] = { stringIdx: curStringIdx, fret };
+            }
+            return { map, tonicMidi };
         }
 
         function generateDegreeSequence(n) {
@@ -236,7 +214,7 @@
         function generateTest() {
             const key = KEYS[Math.floor(Math.random() * KEYS.length)];
             const timeSig = TIME_SIGS[Math.floor(Math.random() * TIME_SIGS.length)];
-            const { idx: stringIdx, fret, openMidi } = chooseStringAndFret(key.tonicPc);
+            const { map: degreeMap, tonicMidi } = buildDegreeMap(key.tonicPc);
 
             const bar1Durations = generateBarRhythm(timeSig);
             const bar2Durations = generateBarRhythm(timeSig);
@@ -252,9 +230,8 @@
             return {
                 key,
                 timeSig,
-                stringIdx,
-                fret,
-                tonicMidi: openMidi + fret,
+                degreeMap,
+                tonicMidi,
                 bar1: toBar(bar1Durations, bar1Degrees),
                 bar2: toBar(bar2Durations, bar2Degrees),
                 bar4: toBar(bar4Durations, bar4Degrees),
@@ -325,59 +302,56 @@
             playIntroAndPhrase(current, current.played ? 1 : 2);
         }
 
-        function durationLabel(units) {
-            return DURATION_LABEL[units] || '';
-        }
+        // Renders the phrase as a 6-line ASCII tab, e.g.:
+        //   e|-----------2-4-5--------------------------------
+        //   B|-----2-3-5--------------------------------------
+        //   G|-2-4--------------------------------------------
+        //   D|--------------------------------------------------
+        //   A|--------------------------------------------------
+        //   E|--------------------------------------------------
+        const STRING_ORDER_HIGH_TO_LOW = [5, 4, 3, 2, 1, 0]; // e,B,G,D,A,E
 
-        function renderBar(bar, test) {
-            const row = document.createElement('div');
-            row.className = 'bar-notes';
-            bar.forEach(({ dur, degree }) => {
-                const cell = document.createElement('div');
-                cell.className = 'note-cell';
-                const fret = document.createElement('div');
-                fret.className = 'note-fret';
-                fret.textContent = test.fret + MAJOR_SCALE_INTERVALS[degree];
-                const meta = document.createElement('div');
-                meta.className = 'note-meta';
-                meta.textContent = `${test.key.names[degree % 7]}${durationLabel(dur)}`;
-                cell.appendChild(fret);
-                cell.appendChild(meta);
-                row.appendChild(cell);
+        function buildTab(test) {
+            const rows = STRING_ORDER_HIGH_TO_LOW.map(() => []);
+
+            function appendDash(n) {
+                for (let i = 0; i < n; i++) rows.forEach(row => row.push('-'));
+            }
+
+            function appendBarLine() {
+                rows.forEach(row => row.push('|'));
+            }
+
+            function appendNote(stringIdx, fret) {
+                const rowIdx = STRING_ORDER_HIGH_TO_LOW.indexOf(stringIdx);
+                const digits = String(fret).split('');
+                digits.forEach(d => rows.forEach((row, i) => row.push(i === rowIdx ? d : '-')));
+            }
+
+            const bars = [test.bar1, test.bar2, test.bar1, test.bar4];
+            bars.forEach((bar, bi) => {
+                appendDash(1);
+                bar.forEach(({ dur, degree }) => {
+                    const { stringIdx, fret } = test.degreeMap[degree];
+                    appendNote(stringIdx, fret);
+                    const digitLen = String(fret).length;
+                    appendDash(Math.max(1, dur * 2 - digitLen));
+                });
+                if (bi < bars.length - 1) appendBarLine();
             });
-            return row;
+
+            return STRING_ORDER_HIGH_TO_LOW
+                .map((stringIdx, i) => `${GUITAR_STRINGS[stringIdx].label}|${rows[i].join('')}`)
+                .join('\n');
         }
 
         function reveal() {
             if (!current) return;
+            const pre = document.createElement('pre');
+            pre.className = 'tab';
+            pre.textContent = buildTab(current);
             answerBox.innerHTML = '';
-
-            const stringLine = document.createElement('p');
-            stringLine.className = 'string-line';
-            stringLine.textContent = `Played on the ${GUITAR_STRINGS[current.stringIdx].label} string, starting at fret ${current.fret}`;
-            answerBox.appendChild(stringLine);
-
-            [
-                { label: 'Bar 1', bar: current.bar1 },
-                { label: 'Bar 2', bar: current.bar2 },
-                { label: 'Bar 3', bar: current.bar1, same: true },
-                { label: 'Bar 4', bar: current.bar4 },
-            ].forEach(({ label, bar, same }) => {
-                const row = document.createElement('div');
-                row.className = 'bar-row';
-                const labelEl = document.createElement('div');
-                labelEl.className = 'bar-label';
-                labelEl.textContent = label;
-                row.appendChild(labelEl);
-                row.appendChild(renderBar(bar, current));
-                if (same) {
-                    const badge = document.createElement('span');
-                    badge.className = 'same-badge';
-                    badge.textContent = '= Bar 1';
-                    row.appendChild(badge);
-                }
-                answerBox.appendChild(row);
-            });
+            answerBox.appendChild(pre);
 
             answerBox.hidden = false;
             playStatusEl.textContent = 'Revealed';
