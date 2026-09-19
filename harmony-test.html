@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Harmony Test</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1.5rem;
+            padding: 2rem;
+        }
+
+        h1 { font-size: 2rem; color: #e94560; letter-spacing: 1px; }
+        .subtitle { color: #888; font-size: 0.9rem; }
+
+        .home-link {
+            align-self: flex-start;
+            color: #888;
+            font-size: 0.85rem;
+            text-decoration: none;
+        }
+        .home-link:hover { color: #e94560; }
+
+        #status {
+            font-size: 0.85rem;
+            color: #f0a500;
+            min-height: 1.2em;
+        }
+        #status.ready { color: #4caf50; }
+
+        .key-display {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            background: #16213e;
+            border: 2px solid #0f3460;
+            border-radius: 8px;
+            color: #eee;
+            cursor: pointer;
+            font-size: 0.9rem;
+            padding: 0.6rem 1.2rem;
+            transition: all 0.15s ease;
+        }
+
+        button:not([disabled]):hover {
+            border-color: #e94560;
+            background: #1f2d50;
+        }
+
+        button[disabled] {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .answer-row {
+            display: flex;
+            gap: 0.6rem;
+            width: 100%;
+            max-width: 420px;
+        }
+
+        #answerInput {
+            flex: 1;
+            background: #16213e;
+            border: 2px solid #0f3460;
+            border-radius: 8px;
+            color: #eee;
+            font-size: 1rem;
+            padding: 0.6rem 0.8rem;
+        }
+
+        #answerInput:focus { outline: none; border-color: #e94560; }
+
+        .hint {
+            color: #666;
+            font-size: 0.75rem;
+        }
+
+        #result {
+            font-size: 1.1rem;
+            font-weight: bold;
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .chord-result {
+            padding: 0.3rem 0.7rem;
+            border-radius: 6px;
+        }
+        .chord-result.correct { background: rgba(76, 175, 80, 0.25); color: #4caf50; }
+        .chord-result.wrong   { background: rgba(233, 69, 96, 0.25); color: #e94560; }
+
+        #answerLine {
+            color: #888;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <a class="home-link" href="index.html">&larr; Home</a>
+    <h1>Harmony Test</h1>
+    <p class="subtitle">Listen to the 4-bar sequence and name each chord in order</p>
+    <p id="status">Loading samples&hellip;</p>
+
+    <p class="key-display" id="keyDisplay"></p>
+
+    <div class="controls">
+        <button id="replayBtn" disabled>Replay</button>
+        <button id="newTestBtn" disabled>New Test</button>
+    </div>
+
+    <div class="answer-row">
+        <input id="answerInput" type="text" placeholder="e.g. G C D Am" autocomplete="off">
+        <button id="checkBtn" disabled>Check</button>
+    </div>
+    <p class="hint">Separate chords with spaces, e.g. "G C D Am"</p>
+
+    <div id="result"></div>
+    <p id="answerLine"></p>
+
+    <script src="https://cdn.jsdelivr.net/npm/soundfont-player@0.12.0/dist/soundfont-player.min.js"></script>
+    <script>
+        // MIDI note numbers for open/barre guitar voicings
+        const CHORD_NOTES = {
+            'C':   [48, 52, 55, 60, 64],
+            'F':   [41, 48, 53, 57, 60, 65],
+            'G':   [43, 47, 50, 55, 59, 67],
+            'D':   [50, 57, 62, 66],
+            'A':   [45, 52, 57, 61, 64],
+            'Dm':  [50, 57, 62, 65],
+            'Em':  [40, 47, 52, 55, 59, 64],
+            'Am':  [45, 52, 57, 60, 64],
+            'Bm':  [47, 54, 59, 62, 66],
+            'F#m': [42, 49, 54, 57, 61, 66],
+        };
+
+        // All 18 sequences: first three chords are I-IV-V or I-V-IV (starting on I),
+        // the fourth is one of the key's diatonic minor triads (ii, iii, vi).
+        const SEQUENCES = [
+            { key: 'C major', chords: ['C', 'F', 'G', 'Dm'] },
+            { key: 'C major', chords: ['C', 'F', 'G', 'Em'] },
+            { key: 'C major', chords: ['C', 'F', 'G', 'Am'] },
+            { key: 'C major', chords: ['C', 'G', 'F', 'Dm'] },
+            { key: 'C major', chords: ['C', 'G', 'F', 'Em'] },
+            { key: 'C major', chords: ['C', 'G', 'F', 'Am'] },
+            { key: 'G major', chords: ['G', 'C', 'D', 'Am'] },
+            { key: 'G major', chords: ['G', 'C', 'D', 'Bm'] },
+            { key: 'G major', chords: ['G', 'C', 'D', 'Em'] },
+            { key: 'G major', chords: ['G', 'D', 'C', 'Am'] },
+            { key: 'G major', chords: ['G', 'D', 'C', 'Bm'] },
+            { key: 'G major', chords: ['G', 'D', 'C', 'Em'] },
+            { key: 'D major', chords: ['D', 'G', 'A', 'Em'] },
+            { key: 'D major', chords: ['D', 'G', 'A', 'F#m'] },
+            { key: 'D major', chords: ['D', 'G', 'A', 'Bm'] },
+            { key: 'D major', chords: ['D', 'A', 'G', 'Em'] },
+            { key: 'D major', chords: ['D', 'A', 'G', 'F#m'] },
+            { key: 'D major', chords: ['D', 'A', 'G', 'Bm'] },
+        ];
+
+        const STRUM_DELAY = 0.022;
+        const BAR_DURATION = 1.6;
+
+        let guitar = null;
+        let ac = null;
+        let current = null;
+
+        const statusEl      = document.getElementById('status');
+        const keyDisplayEl  = document.getElementById('keyDisplay');
+        const replayBtn     = document.getElementById('replayBtn');
+        const newTestBtn    = document.getElementById('newTestBtn');
+        const answerInput   = document.getElementById('answerInput');
+        const checkBtn      = document.getElementById('checkBtn');
+        const resultEl      = document.getElementById('result');
+        const answerLineEl  = document.getElementById('answerLine');
+
+        function pickSequence() {
+            return SEQUENCES[Math.floor(Math.random() * SEQUENCES.length)];
+        }
+
+        function playSequence(chords) {
+            if (!guitar || !ac) return;
+            if (ac.state === 'suspended') ac.resume();
+            const base = ac.currentTime;
+            chords.forEach((chordName, barIndex) => {
+                const notes = CHORD_NOTES[chordName];
+                const barStart = base + barIndex * BAR_DURATION;
+                notes.forEach((midi, i) => {
+                    guitar.play(midi, barStart + i * STRUM_DELAY, { gain: 1.2 });
+                });
+            });
+        }
+
+        function startNewTest() {
+            current = pickSequence();
+            keyDisplayEl.textContent = `Key: ${current.key}`;
+            answerInput.value = '';
+            resultEl.innerHTML = '';
+            answerLineEl.textContent = '';
+            playSequence(current.chords);
+        }
+
+        function checkAnswer() {
+            if (!current) return;
+            const given = answerInput.value.trim().split(/\s+/).filter(Boolean);
+
+            resultEl.innerHTML = '';
+            current.chords.forEach((correctChord, i) => {
+                const givenChord = given[i] || '';
+                const isCorrect = givenChord.toLowerCase() === correctChord.toLowerCase();
+                const span = document.createElement('span');
+                span.className = 'chord-result ' + (isCorrect ? 'correct' : 'wrong');
+                span.textContent = givenChord || '—';
+                resultEl.appendChild(span);
+            });
+
+            answerLineEl.textContent = `Correct sequence: ${current.chords.join(' ')}`;
+        }
+
+        replayBtn.addEventListener('click', () => {
+            if (current) playSequence(current.chords);
+        });
+
+        newTestBtn.addEventListener('click', startNewTest);
+        checkBtn.addEventListener('click', checkAnswer);
+        answerInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') checkAnswer();
+        });
+
+        function loadSamples() {
+            ac = new (window.AudioContext || window.webkitAudioContext)();
+            Soundfont.instrument(ac, 'acoustic_guitar_steel', {
+                soundfont: 'FluidR3_GM',
+                nameToUrl: (name, sf) =>
+                    `https://gleitz.github.io/midi-js-soundfonts/${sf}/${name}-mp3.js`
+            }).then(instrument => {
+                guitar = instrument;
+                statusEl.textContent = 'Samples ready';
+                statusEl.classList.add('ready');
+                replayBtn.disabled = false;
+                newTestBtn.disabled = false;
+                checkBtn.disabled = false;
+                startNewTest();
+            }).catch(() => {
+                statusEl.textContent = 'Click anywhere to load samples…';
+                document.addEventListener('click', loadSamples, { once: true });
+            });
+        }
+
+        window.addEventListener('load', loadSamples);
+    </script>
+</body>
+</html>
