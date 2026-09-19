@@ -102,6 +102,8 @@
 
     <div class="chord-grid" id="chordGrid"></div>
 
+    <button id="beepBtn">Test Beep (raw oscillator)</button>
+
     <pre id="debugLog" style="font-size:0.7rem;color:#666;max-width:480px;width:100%;white-space:pre-wrap;"></pre>
 
     <script src="https://cdn.jsdelivr.net/npm/soundfont-player@0.12.0/dist/soundfont-player.min.js"></script>
@@ -186,6 +188,26 @@
         }
 
         window.addEventListener('load', loadSamples);
+
+        // Isolation test: raw oscillator, no soundfont/MP3 involved
+        document.getElementById('beepBtn').addEventListener('click', () => {
+            if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
+            const play = () => {
+                const osc = ac.createOscillator();
+                const gainNode = ac.createGain();
+                osc.frequency.value = 440;
+                gainNode.gain.value = 0.5;
+                osc.connect(gainNode).connect(ac.destination);
+                osc.start();
+                osc.stop(ac.currentTime + 0.3);
+                log(`beep: ac.state=${ac.state} currentTime=${ac.currentTime.toFixed(3)}`);
+            };
+            if (ac.state === 'suspended') {
+                ac.resume().then(play);
+            } else {
+                play();
+            }
+        });
     </script>
 </body>
 </html>
