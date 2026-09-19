@@ -51,13 +51,13 @@
 
         .answer-box {
             width: 100%;
-            max-width: 640px;
+            max-width: 720px;
             overflow-x: auto;
         }
 
         .tab {
             font-family: 'Courier New', monospace;
-            font-size: 0.95rem;
+            font-size: 15px;
             line-height: 1.5;
             white-space: pre;
             background: #16213e;
@@ -370,6 +370,22 @@
             return [rhythmLine, ...tabLines].join('\n');
         }
 
+        const TAB_BASE_FONT_PX = 15;
+        const TAB_MIN_FONT_PX = 9;
+
+        // Shrinks the tab's font just enough to fit the answer box's width,
+        // so it displays fully without needing to scroll (falls back to
+        // scrolling only if it would otherwise need to shrink unreadably small).
+        function fitTabToWidth(pre) {
+            pre.style.fontSize = TAB_BASE_FONT_PX + 'px';
+            const available = answerBox.clientWidth;
+            const needed = pre.scrollWidth;
+            if (needed > available) {
+                const scaled = Math.max(TAB_MIN_FONT_PX, Math.floor(TAB_BASE_FONT_PX * (available / needed) * 0.98));
+                pre.style.fontSize = scaled + 'px';
+            }
+        }
+
         function reveal() {
             if (!current) return;
             const pre = document.createElement('pre');
@@ -383,8 +399,9 @@
             answerBox.innerHTML = '';
             answerBox.appendChild(pre);
             answerBox.appendChild(legend);
-
             answerBox.hidden = false;
+
+            fitTabToWidth(pre);
             playStatusEl.textContent = 'Revealed';
         }
 
@@ -413,6 +430,9 @@
         }
 
         window.addEventListener('load', loadSamples);
+        window.addEventListener('resize', () => {
+            if (!answerBox.hidden) fitTabToWidth(answerBox.querySelector('.tab'));
+        });
     </script>
 </body>
 </html>
