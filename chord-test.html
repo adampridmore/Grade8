@@ -102,6 +102,8 @@
 
     <div class="chord-grid" id="chordGrid"></div>
 
+    <pre id="debugLog" style="font-size:0.7rem;color:#666;max-width:480px;width:100%;white-space:pre-wrap;"></pre>
+
     <script src="https://cdn.jsdelivr.net/npm/soundfont-player@0.12.0/dist/soundfont-player.min.js"></script>
     <script>
         // MIDI note numbers — standard guitar voicings
@@ -122,6 +124,11 @@
 
         const statusEl = document.getElementById('status');
         const grid     = document.getElementById('chordGrid');
+        const debugEl  = document.getElementById('debugLog');
+
+        function log(msg) {
+            debugEl.textContent += `[${new Date().toISOString().slice(11, 19)}] ${msg}\n`;
+        }
 
         const buttons = CHORDS.map(({ name, type, notes }) => {
             const btn = document.createElement('button');
@@ -135,26 +142,38 @@
 
         function playChord(notes, btn) {
             if (!guitar || !ac) return;
-            if (ac.state === 'suspended') ac.resume();
-            notes.forEach((midi, i) => {
-                guitar.play(midi, ac.currentTime + i * STRUM_DELAY, { gain: 1.2 });
-            });
+            log(`click: ac.state=${ac.state} sampleRate=${ac.sampleRate} currentTime=${ac.currentTime.toFixed(3)}`);
+            if (ac.state === 'suspended') {
+                ac.resume().then(() => log(`resume() resolved: ac.state=${ac.state}`))
+                           .catch(err => log(`resume() rejected: ${err}`));
+            }
+            try {
+                notes.forEach((midi, i) => {
+                    const node = guitar.play(midi, ac.currentTime + i * STRUM_DELAY, { gain: 1.2 });
+                    log(`play(${midi}) -> ${node ? 'node returned' : 'no node returned'}`);
+                });
+            } catch (err) {
+                log(`play() threw: ${err}`);
+            }
             btn.classList.add('playing');
             setTimeout(() => btn.classList.remove('playing'), 300);
         }
 
         function loadSamples() {
             ac = new (window.AudioContext || window.webkitAudioContext)();
+            log(`AudioContext created: state=${ac.state} sampleRate=${ac.sampleRate}`);
             Soundfont.instrument(ac, 'acoustic_guitar_steel', {
                 soundfont: 'FluidR3_GM',
                 nameToUrl: (name, sf) =>
                     `https://gleitz.github.io/midi-js-soundfonts/${sf}/${name}-mp3.js`
             }).then(instrument => {
                 guitar = instrument;
+                log(`instrument loaded: ac.state=${ac.state}`);
                 statusEl.textContent = 'Samples ready';
                 statusEl.classList.add('ready');
                 buttons.forEach(btn => btn.disabled = false);
-            }).catch(() => {
+            }).catch(err => {
+                log(`Soundfont.instrument rejected: ${err}`);
                 statusEl.textContent = 'Click any button to load samples…';
                 document.addEventListener('click', loadSamples, { once: true });
             });
