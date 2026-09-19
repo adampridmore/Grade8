@@ -151,10 +151,14 @@
 
         // ── Generation ────────────────────────────────────────────
 
+        // Picks the string/fret with the smallest FRETTED (non-open) position for
+        // this pitch class, so the phrase is always played up the neck rather than
+        // in open position.
         function chooseStringAndFret(tonicPc) {
             let best = null;
             GUITAR_STRINGS.forEach((string, idx) => {
                 const fret = (tonicPc - (string.openMidi % 12) + 12) % 12;
+                if (fret === 0) return; // skip open strings
                 if (!best || fret < best.fret) best = { idx, fret, openMidi: string.openMidi };
             });
             return best;
@@ -163,7 +167,8 @@
         // Maps each scale degree (0..7, tonic..octave) to a fixed (string, fret),
         // walking up the neck one string at a time like a natural scale fingering:
         // stay on the current string while the fret is within reach, otherwise
-        // shift up to the next string.
+        // shift up to the next string -- unless that shift would land on an open
+        // string, in which case the current string is kept a little longer instead.
         const POSITION_SPAN = 4; // max frets above the string's landing fret before shifting
 
         function buildDegreeMap(tonicPc) {
@@ -176,9 +181,12 @@
                 const targetMidi = tonicMidi + MAJOR_SCALE_INTERVALS[d];
                 let fret = targetMidi - GUITAR_STRINGS[curStringIdx].openMidi;
                 if (fret > curBaseFret + POSITION_SPAN && curStringIdx < GUITAR_STRINGS.length - 1) {
-                    curStringIdx += 1;
-                    curBaseFret = targetMidi - GUITAR_STRINGS[curStringIdx].openMidi;
-                    fret = curBaseFret;
+                    const nextFret = targetMidi - GUITAR_STRINGS[curStringIdx + 1].openMidi;
+                    if (nextFret > 0) {
+                        curStringIdx += 1;
+                        curBaseFret = nextFret;
+                        fret = nextFret;
+                    }
                 }
                 map[d] = { stringIdx: curStringIdx, fret };
             }
