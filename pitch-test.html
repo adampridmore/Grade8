@@ -66,6 +66,12 @@
             padding: 0.9rem 1rem;
             color: #eee;
         }
+
+        .legend {
+            color: #666;
+            font-size: 0.75rem;
+            margin-top: 0.5rem;
+        }
     </style>
 </head>
 <body>
@@ -291,56 +297,77 @@
             playPhraseAudio(current);
         }
 
-        // Renders the phrase as a 6-line ASCII tab, e.g.:
+        // Renders the phrase as a rhythm line above a 6-line ASCII tab, e.g.:
+        //     ♩   ♩   ♪ ♪ | ♩.    ♪ | ...
         //   e|-----------2-4-5--------------------------------
         //   B|-----2-3-5--------------------------------------
         //   G|-2-4--------------------------------------------
         //   D|--------------------------------------------------
         //   A|--------------------------------------------------
         //   E|--------------------------------------------------
+        // The rhythm line and tab rows are built column-by-column together so
+        // a note's duration symbol always lines up with its fret number.
         const STRING_ORDER_HIGH_TO_LOW = [5, 4, 3, 2, 1, 0]; // e,B,G,D,A,E
+        const DURATION_SYMBOL = { 1: '♪', 2: '♩', 3: '♩.' }; // quaver, crotchet, dotted crotchet
 
-        function buildTab(test) {
-            const rows = STRING_ORDER_HIGH_TO_LOW.map(() => []);
+        function buildAnswer(test) {
+            const tabRows = STRING_ORDER_HIGH_TO_LOW.map(() => []);
+            const rhythmRow = [];
 
-            function appendDash(n) {
-                for (let i = 0; i < n; i++) rows.forEach(row => row.push('-'));
+            function appendColumn(tabChar, tabRowIdx, rhythmChar) {
+                tabRows.forEach((row, i) => row.push(i === tabRowIdx ? tabChar : '-'));
+                rhythmRow.push(rhythmChar);
             }
 
             function appendBarLine() {
-                rows.forEach(row => row.push('|'));
+                tabRows.forEach(row => row.push('|'));
+                rhythmRow.push('|');
             }
 
-            function appendNote(stringIdx, fret) {
+            function appendNote(stringIdx, fret, dur) {
                 const rowIdx = STRING_ORDER_HIGH_TO_LOW.indexOf(stringIdx);
-                const digits = String(fret).split('');
-                digits.forEach(d => rows.forEach((row, i) => row.push(i === rowIdx ? d : '-')));
+                const fretChars = String(fret).split('');
+                const symbolChars = DURATION_SYMBOL[dur].split('');
+                const width = Math.max(dur * 2, fretChars.length + 1, symbolChars.length + 1);
+                for (let col = 0; col < width; col++) {
+                    appendColumn(
+                        col < fretChars.length ? fretChars[col] : '-',
+                        rowIdx,
+                        col < symbolChars.length ? symbolChars[col] : ' '
+                    );
+                }
             }
 
             const bars = [test.bar1, test.bar2, test.bar1, test.bar4];
             bars.forEach((bar, bi) => {
-                appendDash(1);
+                appendColumn('-', -1, ' ');
                 bar.forEach(({ dur, degree }) => {
                     const { stringIdx, fret } = test.degreeMap[degree];
-                    appendNote(stringIdx, fret);
-                    const digitLen = String(fret).length;
-                    appendDash(Math.max(1, dur * 2 - digitLen));
+                    appendNote(stringIdx, fret, dur);
                 });
                 if (bi < bars.length - 1) appendBarLine();
             });
 
-            return STRING_ORDER_HIGH_TO_LOW
-                .map((stringIdx, i) => `${GUITAR_STRINGS[stringIdx].label}|${rows[i].join('')}`)
-                .join('\n');
+            const tabLines = STRING_ORDER_HIGH_TO_LOW
+                .map((stringIdx, i) => `${GUITAR_STRINGS[stringIdx].label}|${tabRows[i].join('')}`);
+            const rhythmLine = `  ${rhythmRow.join('')}`;
+
+            return [rhythmLine, ...tabLines].join('\n');
         }
 
         function reveal() {
             if (!current) return;
             const pre = document.createElement('pre');
             pre.className = 'tab';
-            pre.textContent = buildTab(current);
+            pre.textContent = buildAnswer(current);
+
+            const legend = document.createElement('p');
+            legend.className = 'legend';
+            legend.textContent = '♪ quaver   ♩ crotchet   ♩. dotted crotchet';
+
             answerBox.innerHTML = '';
             answerBox.appendChild(pre);
+            answerBox.appendChild(legend);
 
             answerBox.hidden = false;
             playStatusEl.textContent = 'Revealed';
