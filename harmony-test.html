@@ -128,6 +128,13 @@
             'F#m': [42, 49, 54, 57, 61, 66],
         };
 
+        // Roman-numeral degree of each diatonic triad, per key.
+        const ROMAN_NUMERALS = {
+            'C major': { C: 'I', Dm: 'ii', Em: 'iii', F: 'IV', G: 'V', Am: 'vi', Bdim: 'vii°' },
+            'G major': { G: 'I', Am: 'ii', Bm: 'iii', C: 'IV', D: 'V', Em: 'vi', 'F#dim': 'vii°' },
+            'D major': { D: 'I', Em: 'ii', 'F#m': 'iii', G: 'IV', A: 'V', Bm: 'vi', 'C#dim': 'vii°' },
+        };
+
         // All 18 sequences: first three chords are I-IV-V or I-V-IV (starting on I),
         // the fourth is one of the key's diatonic minor triads (ii, iii, vi).
         const SEQUENCES = [
@@ -222,7 +229,10 @@
             currentScored = true;
             updateScoreDisplay();
 
-            answerLineEl.textContent = `Correct sequence: ${current.chords.join(' ')}`;
+            const withNumerals = current.chords
+                .map(chord => `${chord} (${ROMAN_NUMERALS[current.key][chord]})`)
+                .join('  ');
+            answerLineEl.textContent = `Correct sequence: ${withNumerals}`;
         }
 
         replayBtn.addEventListener('click', () => {
