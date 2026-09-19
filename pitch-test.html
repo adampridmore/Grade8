@@ -124,7 +124,7 @@
     <p id="playStatus"></p>
 
     <div class="controls">
-        <button id="onceMoreBtn" disabled>Play Once More</button>
+        <button id="playBtn" disabled>Play</button>
         <button id="revealBtn" disabled>Reveal</button>
         <button id="newTestBtn" disabled>New Test</button>
     </div>
@@ -181,12 +181,12 @@
         let guitar = null;
         let ac = null;
         let busy = false;
-        let current = null; // { key, timeSig, stringIdx, fret, bar1, bar2, bar4 } (bar3 === bar1)
+        let current = null; // { key, timeSig, stringIdx, fret, bar1, bar2, bar4, played } (bar3 === bar1)
 
         const statusEl     = document.getElementById('status');
         const keyDisplayEl = document.getElementById('keyDisplay');
         const playStatusEl = document.getElementById('playStatus');
-        const onceMoreBtn  = document.getElementById('onceMoreBtn');
+        const playBtn      = document.getElementById('playBtn');
         const revealBtn    = document.getElementById('revealBtn');
         const newTestBtn   = document.getElementById('newTestBtn');
         const answerBox    = document.getElementById('answerBox');
@@ -282,7 +282,7 @@
             if (!guitar || !ac || busy) return;
             if (ac.state === 'suspended') ac.resume();
             busy = true;
-            setControlsEnabled(false);
+            refreshControls();
             playStatusEl.textContent = 'Playing…';
 
             let t = 0;
@@ -296,31 +296,33 @@
 
             setTimeout(() => {
                 busy = false;
-                setControlsEnabled(true);
+                test.played = true;
+                refreshControls();
                 playStatusEl.textContent = 'Ready';
             }, t * 1000);
         }
 
-        function setControlsEnabled(enabled) {
-            const revealed = answerBox.hidden === false;
-            newTestBtn.disabled = !enabled;
-            onceMoreBtn.disabled = !enabled || revealed;
-            revealBtn.disabled = !enabled || revealed;
+        function refreshControls() {
+            newTestBtn.disabled = busy;
+            playBtn.disabled = busy || !current;
+            revealBtn.disabled = busy || !current || !current.played;
         }
 
         // ── UI ────────────────────────────────────────────────────
 
         function startNewTest() {
             current = generateTest();
+            current.played = false;
             keyDisplayEl.textContent = `Key: ${current.key.name} — Time: ${current.timeSig}`;
             answerBox.hidden = true;
             answerBox.innerHTML = '';
-            playIntroAndPhrase(current, 2);
+            playStatusEl.textContent = 'Press Play to begin';
+            refreshControls();
         }
 
-        function playOnceMore() {
+        function playPhrase() {
             if (!current) return;
-            playIntroAndPhrase(current, 1);
+            playIntroAndPhrase(current, current.played ? 1 : 2);
         }
 
         function durationLabel(units) {
@@ -378,13 +380,11 @@
             });
 
             answerBox.hidden = false;
-            onceMoreBtn.disabled = true;
-            revealBtn.disabled = true;
             playStatusEl.textContent = 'Revealed';
         }
 
         newTestBtn.addEventListener('click', startNewTest);
-        onceMoreBtn.addEventListener('click', playOnceMore);
+        playBtn.addEventListener('click', playPhrase);
         revealBtn.addEventListener('click', reveal);
 
         // ── Audio loading ─────────────────────────────────────────
@@ -399,7 +399,6 @@
                 guitar = instrument;
                 statusEl.textContent = 'Samples ready';
                 statusEl.classList.add('ready');
-                newTestBtn.disabled = false;
                 startNewTest();
             }).catch(() => {
                 statusEl.textContent = 'Click anywhere to load samples…';
