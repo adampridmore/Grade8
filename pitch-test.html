@@ -127,14 +127,13 @@
         const CELLS_3 = [[3], [2, 1], [1, 2], [1, 1, 1]];
 
         const EIGHTH = 0.3; // seconds per eighth-note unit
-        const GAP = EIGHTH * 2;
 
         // ── State ─────────────────────────────────────────────────
 
         let guitar = null;
         let ac = null;
         let busy = false;
-        let current = null; // { key, timeSig, degreeMap, tonicMidi, bar1, bar2, bar4, played } (bar3 === bar1)
+        let current = null; // { key, timeSig, degreeMap, tonicMidi, bar1, bar2, bar4 } (bar3 === bar1)
 
         const statusEl     = document.getElementById('status');
         const keyDisplayEl = document.getElementById('keyDisplay');
@@ -255,23 +254,17 @@
             return t; // end time (relative offset)
         }
 
-        function playPhraseAudio(test, repeats) {
+        function playPhraseAudio(test) {
             if (!guitar || !ac || busy) return;
             if (ac.state === 'suspended') ac.resume();
             busy = true;
             refreshControls();
             playStatusEl.textContent = 'Playing…';
 
-            let t = 0;
-
-            for (let i = 0; i < repeats; i++) {
-                t = schedulePhrase(test, t);
-                t += GAP;
-            }
+            const t = schedulePhrase(test, 0);
 
             setTimeout(() => {
                 busy = false;
-                test.played = true;
                 refreshControls();
                 playStatusEl.textContent = 'Ready';
             }, t * 1000);
@@ -286,7 +279,6 @@
 
         function startNewTest() {
             current = generateTest();
-            current.played = false;
             keyDisplayEl.textContent = `Key: ${current.key.name} — Time: ${current.timeSig}`;
             answerBox.hidden = true;
             answerBox.innerHTML = '';
@@ -296,7 +288,7 @@
 
         function playPhrase() {
             if (!current) return;
-            playPhraseAudio(current, current.played ? 1 : 2);
+            playPhraseAudio(current);
         }
 
         // Renders the phrase as a 6-line ASCII tab, e.g.:
