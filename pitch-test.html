@@ -255,7 +255,7 @@
             return t; // end time (relative offset)
         }
 
-        function playIntroAndPhrase(test, repeats) {
+        function playPhraseAudio(test, repeats) {
             if (!guitar || !ac || busy) return;
             if (ac.state === 'suspended') ac.resume();
             busy = true;
@@ -263,8 +263,6 @@
             playStatusEl.textContent = 'Playing…';
 
             let t = 0;
-            guitar.play(test.tonicMidi, ac.currentTime + t, { gain: 1.3 });
-            t += 2 * EIGHTH + GAP;
 
             for (let i = 0; i < repeats; i++) {
                 t = schedulePhrase(test, t);
@@ -298,7 +296,7 @@
 
         function playPhrase() {
             if (!current) return;
-            playIntroAndPhrase(current, current.played ? 1 : 2);
+            playPhraseAudio(current, current.played ? 1 : 2);
         }
 
         // Renders the phrase as a 6-line ASCII tab, e.g.:
